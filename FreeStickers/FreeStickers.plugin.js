@@ -1,7 +1,7 @@
 /**
 	* @name FreeStickers
 	* @displayName FreeStickers
-	* @description Enables you to send custom stricks without nitro as images, (custom stickers as ones that are added by servers, not officiel discord stickers).
+	* @description Enables you to send custom stricks without nitro as links, (custom stickers as in the ones that are added by servers, not officiel discord stickers).
 	* @version 0.0.1
 	* @authorId Unknown
 	*/

@@ -16,7 +16,6 @@ const config = {
 		"version": "1.0.0",
 		"description": "Enables you to send custom stricks without nitro as links, (custom stickers as in the ones that are added by servers, not officiel discord stickers)."
 	},
-	changelog: [],
 	defaultConfig: [{
 		type: 'slider',
 		id: 'stickerSize',
@@ -32,10 +31,32 @@ const config = {
 		note: 'This functionally has a great chancing of breaking due to other plugins overriding it.',
 		value: true
 	}, {
-		type: 'switch',
-		id: 'preview',
-		name: 'Show preview',
-		value: true
+		type: "category",
+		id: "preview",
+		name: "Preview Settings",
+		collapsible: true,
+		shown: false,
+		settings: [{
+			type: 'switch',
+			id: 'stickerPreview',
+			name: 'Enable Preview for stickers',
+			note: 'Enables a preview for stickers, Sometimes stickers tend to be small or has text that is unreadable',
+			value: true
+		}, {
+			type: 'switch',
+			id: 'emojiPreview',
+			name: 'Enables Preview for emojis',
+			note: 'Enables a preview for emojis, Emojis tend to be small or has text that is unreadable',
+			value: true
+		}, {
+			type: 'slider',
+			id: 'previewSize',
+			name: 'Previw Size',
+			note: 'The size of the preview',
+			value: 300,
+			markers: [100, 200, 300, 400, 500, 600],
+			stickToMarkers: true
+		}]
 	}]
 };
 
@@ -58,6 +79,8 @@ module.exports = (() => {
 				WebpackModules,
 				PluginUtilities,
 				DiscordModules: {
+					React,
+					React: { useState },
 					UserStore,
 					ChannelStore,
 					SelectedChannelStore
@@ -69,61 +92,125 @@ module.exports = (() => {
 			const StickersSendability = WebpackModules.getByProps(['isSendableSticker']);
 			const MessageUtilities = WebpackModules.getByProps("sendStickers");
 			const closeExpressionPicker = WebpackModules.getByProps("closeExpressionPicker");
-			const ExpressionPickerInspector = WebpackModules.find(e => e.default.displayName === "ExpressionPickerInspector");
-			const css = `
-			.stickersPreview:not(:empty){
-				background:#222;
-				position:absolute;
-				width:500px;
-				height:500px;
-				z-index:654654;
-			}
-
-			.stickersPreview > img {
-				height: 100% !important;
-				width: 100% !important;
-			}`;
-
 			const ReactionPopout = WebpackModules.getByProps("isSelected");
+			const StickerMeta = WebpackModules.getByProps('addStickerPreview')
+			const ExpressionPickerInspector = WebpackModules.find(e => e.default.displayName === "ExpressionPickerInspector");
+			const StickerPickerLoader = WebpackModules.find(m => m.default.displayName === 'StickerPickerLoader');
+			const Sticker = WebpackModules.find(m => m.default.displayName === 'Sticker');
+			const Popout = WebpackModules.getByDisplayName("Popout");
 
+			const ExpressionPickerListItemImage = WebpackModules.find(m => m.default.displayName === 'ExpressionPickerListItemImage');
+			const css = `
+				.stickersPreview {
+					width:400px;
+					font-size: 14px;
+					background: var(--background-floating);
+					border-radius: 5px;
+					padding: .5em;
+					box-shadow: var(--elevation-high);
+				}
+				.stickersPreview img{
+					min-width:100%;
+					max-width:100%;
+				}`;
+
+
+			const previewComponent = ({ sticker, element, data, settings }) => {
+				const [showPopout, setShowPopout] = useState(false);
+
+				return React.createElement(Popout, {
+					shouldShow: showPopout,
+					position: Popout.Positions.LEFT,
+					align: Popout.Align.BOTTOM,
+					animation: Popout.Animation["SCALE"],
+					spacing: 8,
+					renderPopout: () => {
+						const params = `size=640&quality=lossless`
+						return React.createElement("div", {
+							style: { width: `${settings.preview.previewSize}px` },
+							className: "stickersPreview"
+						}, React.createElement('img', {
+							src: sticker ?
+								`https://media.discordapp.net/stickers/${data.id}.webp?${params}` : `${data.src.split('?')[0]}?${params}`
+						}))
+					}
+				}, () => {
+					return React.createElement('div', {
+						onMouseEnter: () => { setShowPopout(true) },
+						onMouseLeave: () => { setShowPopout(false) }
+					}, element)
+				})
+			}
 			return class FreeStickers extends Plugin {
 				constructor() {
 					super();
 					// saving this because it's needed to check if sticker is able to be sent normally
+					// and because it's patched
 					this.stickerSendability = StickersSendability.getStickerSendability;
-					this.canClosePicker = true
+					// a boolean for whether to close ExpressionPicker
+					this.canClosePicker = true;
+					// keydown/keyup listeners checking for shift key
 					this.listeners = [
 						(e) => this.canClosePicker = !(e.keyCode === 16),
-						(e) => this.canClosePicker = true,
-						(e) => this.previewElement.innerHTML = ""
+						(e) => this.canClosePicker = true
 					]
 				}
 
-				patchReactionPopout() {
-					// Reaction pickers has PickerInspector which trigers the preview 
-					// But it doesn't call closeExpressionPicker because a subcomponent is being used
-					// must do it manually
-					Patcher.after(ReactionPopout, 'default', (_, args, ret) => {
-						if (!ret.popouts.emojiPicker && ret.selected)
-							this.clearPreviewElement();
+				patchSticker() {
+					// Add a zoom/preview popout to stickers
+					Patcher.after(Sticker, 'default', (_, args, ret) => {
+						const sticker = args[0].sticker;
+						return (this.settings.preview.stickerPreview && sticker.type === StickerType.MetaStickerType.GUILD) ?
+							React.createElement(previewComponent, {
+								settings: this.settings,
+								sticker: true,
+								element: ret,
+								data: sticker
+							}) : ret;
+					})
+					// Add a zoom/preview popout to Emojis 
+					Patcher.after(ExpressionPickerListItemImage, 'default', (_, args, ret) => {
+						return this.settings.preview.emojiPreview ?
+							React.createElement(previewComponent, {
+								settings: this.settings,
+								element: ret,
+								data: args[0]
+							}) : ret;
+
 					})
 				}
-
-				patchExpressionPickerInspector() {
-					// Ptching the inspector component (the little pic at the bottom  instead of listening for stickers's hover events) to create a preview
-					Patcher.after(ExpressionPickerInspector, 'default', (_, args, ret) => {
-						if (!this.settings.preview) return;
-						const media = args[0].graphicPrimary.props;
-						if (media.sticker) {
-							const { sticker } = media;
-							if (sticker.type === 2) // For Stickers
-								this.previewElement.innerHTML = `<img src="https://media.discordapp.net/stickers/${sticker.id}.webp" />`
-						} else if (media.src) { // For Emojis
-							this.previewElement.innerHTML = `<img src="${media.src.split('?')[0]}" />`;
+				patchStickerAttachement() {
+					Patcher.before(MessageUtilities, 'sendMessage', (_, args, ret) => {
+						const [channelId, , , attachments] = args;
+						if (attachments && attachments.stickerIds && attachments.stickerIds.filter) {
+							const [stickerId] = attachments.stickerIds;
+							const { SENDABLE } = StickersSendability.StickerSendability;
+							if (this.isStickerSendable(stickerId) !== SENDABLE) {
+								args[3] = {};
+								this.sendStickerAsLink(stickerId, channelId);
+							}
 						}
 					})
 				}
 
+				patchStickerPickerLoader() {
+					// Bypass send external stickers permission by adding current user as exception to the channel
+					// Weirdly enough 'Use External Stickers' permission doesn't do anything
+					// 'Use External Emoji' is needed
+					Patcher.before(StickerPickerLoader, 'default', (_, args, ret) => {
+						const temp = {};
+						temp[UserStore.getCurrentUser().id] = {
+							id: UserStore.getCurrentUser().id,
+							type: 1,
+							allow: 262144n,
+							deny: 0n
+						};
+						args[0].channel.permissionOverwrites = {
+							...args[0].channel.permissionOverwrites,
+							...temp
+						};
+					})
+				}
 				patchStickerClickability() {
 					// if it's a guild sticker return true to make it clickable 
 					// ignoreing discord's stickers because ToS, and they're not regular images
@@ -146,15 +233,11 @@ module.exports = (() => {
 					// Self explanatory i believe
 					Patcher.instead(MessageUtilities, 'sendStickers', (_, args, originalFunc) => {
 						const [channelId, [stickerId]] = args;
-						const sticker = StickersFunctions.getStickerById(stickerId);
-						const channel = ChannelStore.getChannel(SelectedChannelStore.getChannelId());
-						const isStickerAvailable = this.stickerSendability(sticker, UserStore.getCurrentUser(), channel);
 						const { SENDABLE } = StickersSendability.StickerSendability;
-						if (isStickerAvailable == SENDABLE)
+						if (this.isStickerSendable(stickerId) == SENDABLE)
 							originalFunc.apply(_, args)
 						else {
-							const stickerUrl = `https://media.discordapp.net/stickers/${stickerId}.webp?size=${this.settings.stickerSize}&quality=lossless`;
-							MessageUtilities.sendMessage(channelId, { content: stickerUrl, validNonShortcutEmojis: [] });
+							this.sendStickerAsLink(stickerId, channelId);
 						}
 					});
 				}
@@ -166,70 +249,64 @@ module.exports = (() => {
 						if (this.settings.keepStickersPopoutOpen) {
 							if (this.canClosePicker) {
 								originalFunc();
-								this.clearPreviewElement();
 							}
 						} else {
 							originalFunc();
-							this.clearPreviewElement();
 						}
 					});
 				}
 
-				setupPreviewElement() {
-					this.previewElement = document.createElement('div');
-					this.previewElement.setAttribute('class', 'stickersPreview');
-					document.body.appendChild(this.previewElement);
+				sendStickerAsLink(stickerId, channelId) {
+					// Self explanatory i believe
+					const stickerUrl = `https://media.discordapp.net/stickers/${stickerId}.webp?size=${this.settings.stickerSize}&quality=lossless`;
+					MessageUtilities.sendMessage(channelId, { content: stickerUrl, validNonShortcutEmojis: [] });
 				}
 
-				clearPreviewElement() {
-					this.previewElement.innerHTML = "";
+				isStickerSendable(stickerId) {
+					// Checking if sticker can be sent normally, Nitro / Guild's sticker
+					const sticker = StickersFunctions.getStickerById(stickerId);
+					const channel = ChannelStore.getChannel(SelectedChannelStore.getChannelId());
+					return this.stickerSendability(sticker, UserStore.getCurrentUser(), channel);
 				}
 
 				setupKeyListeners() {
-
 					document.addEventListener("keydown", this.listeners[0]);
 					document.addEventListener("keyup", this.listeners[1]);
-					document.addEventListener("click", this.listeners[2]);
 				}
 
 				removeKeyListeners() {
-					if (this.listeners && this.listeners[1]) {
-						document.removeEventListener("keydown", this.listeners[0]);
-						document.removeEventListener("keyup", this.listeners[1]);
-						document.removeEventListener("click", this.listeners[2]);
-						this.canClosePicker = true;
-					}
+					document.removeEventListener("keydown", this.listeners[0]);
+					document.removeEventListener("keyup", this.listeners[1]);
 				}
 
 				patch() {
 					PluginUtilities.addStyle(this.getName(), css);
 					this.setupKeyListeners();
-					this.setupPreviewElement();
-					this.patchExpressionPickerInspector();
 					this.patchStickerClickability();
 					this.patchStickerSuggestion();
 					this.patchSendSticker();
 					this.patchExpressionsPicker();
-					this.patchReactionPopout();
+					this.patchStickerPickerLoader();
+					this.patchStickerAttachement();
+					this.patchSticker();
 				}
-
+				clean() {
+					PluginUtilities.removeStyle(this.getName());
+					this.removeKeyListeners();
+					Patcher.unpatchAll();
+				}
 				onStart() {
 					try {
 						this.patch();
+						console.log(this.settings)
 					} catch (e) {
 						console.error(e);
 					}
 				}
 
-				onStop() { this.clean(); }
-
-				clean() {
-					Patcher.unpatchAll();
-					PluginUtilities.removeStyle(this.getName());
-					document.body.removeChild(this.previewElement);
-					this.removeKeyListeners();
+				onStop() {
+					this.clean();
 				}
-
 				getSettingsPanel() { return this.buildSettingsPanel().getElement(); }
 			};
 

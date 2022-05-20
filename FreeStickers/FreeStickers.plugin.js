@@ -1,20 +1,27 @@
 /**
 	* @name FreeStickers
 	* @displayName FreeStickers
-	* @description Enables you to send custom stricks without nitro as links, (custom stickers as in the ones that are added by servers, not officiel discord stickers).
+	* @author Zs
+	* @authorId 310450863845933057
 	* @version 1.0.0
-	* @authorId Unknown
-	*/
+	* @description Enables you to send custom stricks without nitro as links, (custom stickers as in the ones that are added by servers, not officiel discord stickers).
+	* @authorLink https://github.com/Debuggerz1
+	* @source https://github.com/Debuggerz1/BetterDiscordPlugins/tree/main/FreeStickers
+*/
 
 
 const config = {
 	info: {
 		"name": "FreeStickers",
 		"authors": [{
-			"name": "Unknown",
+			"name": "Zs",
+			"github_username": "Debuggerz1", 
+			"discord_id": "750099582779916469"
 		}],
 		"version": "1.0.0",
-		"description": "Enables you to send custom stricks without nitro as links, (custom stickers as in the ones that are added by servers, not officiel discord stickers)."
+		"description": "Enables you to send custom stricks without nitro as links, (custom stickers as in the ones that are added by servers, not officiel discord stickers).",
+		"github": "https://github.com/Debuggerz1/BetterDiscordPlugins/tree/main/FreeStickers",
+		"github_raw": "https://raw.githubusercontent.com/Debuggerz1/BetterDiscordPlugins/main/FreeStickers/FreeStickers.plugin.js"
 	},
 	defaultConfig: [{
 		type: 'slider',
@@ -115,26 +122,25 @@ module.exports = (() => {
 				}`;
 
 
-			const previewComponent = ({ sticker, element, data, settings }) => {
+			const previewComponent = ({ sticker, element, data, previewSize }) => {
 				const [showPopout, setShowPopout] = useState(false);
 
 				return React.createElement(Popout, {
 					shouldShow: showPopout,
-					position: Popout.Positions.LEFT,
-					align: Popout.Align.BOTTOM,
+					position: Popout.Positions.TOP,
+					align: Popout.Align.CENTER,
 					animation: Popout.Animation["SCALE"],
-					spacing: 8,
+					spacing: 0,
 					renderPopout: () => {
-						const params = `size=640&quality=lossless`
 						return React.createElement("div", {
-							style: { width: `${settings.preview.previewSize}px` },
+							style: { width: `${previewSize}px` },
 							className: "stickersPreview"
 						}, React.createElement('img', {
 							src: sticker ?
-								`https://media.discordapp.net/stickers/${data.id}.webp?${params}` : `${data.src.split('?')[0]}?${params}`
+								`https://media.discordapp.net/stickers/${data.id}.webp?size=640&quality=lossless` : `${data.src.split('?')[0]}?size=640&passthrough=false&quality=lossless`
 						}))
 					}
-				}, () => {
+				}, (e) => {
 					return React.createElement('div', {
 						onMouseEnter: () => { setShowPopout(true) },
 						onMouseLeave: () => { setShowPopout(false) }
@@ -159,10 +165,11 @@ module.exports = (() => {
 				patchSticker() {
 					// Add a zoom/preview popout to stickers
 					Patcher.after(Sticker, 'default', (_, args, ret) => {
+						// TODO: if sticker size is 160 means sticker is in chat and not in Picker
 						const sticker = args[0].sticker;
 						return (this.settings.preview.stickerPreview && sticker.type === StickerType.MetaStickerType.GUILD) ?
 							React.createElement(previewComponent, {
-								settings: this.settings,
+								previewSize: this.settings.preview.previewSize,
 								sticker: true,
 								element: ret,
 								data: sticker
@@ -172,7 +179,7 @@ module.exports = (() => {
 					Patcher.after(ExpressionPickerListItemImage, 'default', (_, args, ret) => {
 						return this.settings.preview.emojiPreview ?
 							React.createElement(previewComponent, {
-								settings: this.settings,
+								previewSize: this.settings.preview.previewSize,
 								element: ret,
 								data: args[0]
 							}) : ret;
@@ -258,7 +265,7 @@ module.exports = (() => {
 
 				sendStickerAsLink(stickerId, channelId) {
 					// Self explanatory i believe
-					const stickerUrl = `https://media.discordapp.net/stickers/${stickerId}.webp?size=${this.settings.stickerSize}&quality=lossless`;
+					const stickerUrl = `https://media.discordapp.net/stickers/${stickerId}.webp?size=${this.settings.stickerSize}&passthrough=false&quality=lossless`;
 					MessageUtilities.sendMessage(channelId, { content: stickerUrl, validNonShortcutEmojis: [] });
 				}
 
@@ -298,7 +305,6 @@ module.exports = (() => {
 				onStart() {
 					try {
 						this.patch();
-						console.log(this.settings)
 					} catch (e) {
 						console.error(e);
 					}

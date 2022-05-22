@@ -3,11 +3,12 @@
 	* @displayName FreeStickers
 	* @author Zohini
 	* @authorId 310450863845933057
-	* @version 1.0.0
+	* @version 1.1.0
 	* @description Enables you to send custom Stickers without nitro as links, (custom stickers as in the ones that are added by servers, not officiel discord stickers).
 	* @authorLink https://github.com/Debuggerz1
 	* @source https://github.com/Debuggerz1/BetterDiscordPlugins/tree/main/FreeStickers
 	*/
+
 
 
 const config = {
@@ -18,11 +19,14 @@ const config = {
 			"github_username": "Debuggerz1",
 			"discord_id": "750099582779916469"
 		}],
-		"version": "1.0.0",
+		"version": "1.1.0",
 		"description": "Enables you to send custom Stickers without nitro as links, (custom stickers as in the ones that are added by servers, not officiel discord stickers).",
 		"github": "https://github.com/Debuggerz1/BetterDiscordPlugins/tree/main/FreeStickers",
 		"github_raw": "https://raw.githubusercontent.com/Debuggerz1/BetterDiscordPlugins/main/FreeStickers/FreeStickers.plugin.js"
 	},
+	changelog: [
+		{ title: 'Added', type: 'added', items: ['Included stock emojis in previews'] }
+	],
 	defaultConfig: [{
 		type: 'slider',
 		id: 'stickerSize',
@@ -113,6 +117,7 @@ module.exports = (() => {
 			const Sticker = WebpackModules.find(m => m.default.displayName === 'Sticker');
 			const Popout = WebpackModules.getByDisplayName("Popout");
 			const ExpressionPickerListItemImage = WebpackModules.find(m => m.default.displayName === 'ExpressionPickerListItemImage');
+			const EmojiPickerListRow = WebpackModules.find(m => m.default.displayName === 'EmojiPickerListRow');
 
 			const css = `
 				.stickersPreview {
@@ -132,7 +137,8 @@ module.exports = (() => {
 
 			const previewComponent = ({ sticker, element, data, previewSize }) => {
 				const [showPopout, setShowPopout] = useState(false);
-
+				const url = sticker ?
+					`https://media.discordapp.net/stickers/${data.id}.webp?size=640&quality=lossless` : data.id ? `${data.url.split('?')[0]}?size=640&passthrough=false&quality=lossless` : data.url
 				return React.createElement(Popout, {
 					shouldShow: showPopout,
 					position: Popout.Positions.TOP,
@@ -144,8 +150,7 @@ module.exports = (() => {
 							style: { width: `${previewSize}px` },
 							className: "stickersPreview"
 						}, React.createElement('img', {
-							src: sticker ?
-								`https://media.discordapp.net/stickers/${data.id}.webp?size=640&quality=lossless` : `${data.src.split('?')[0]}?size=640&passthrough=false&quality=lossless`
+							src: url
 						}))
 					}
 				}, (e) => {
@@ -158,15 +163,20 @@ module.exports = (() => {
 			return class FreeStickers extends Plugin {
 				constructor() {
 					super();
+					// saving this because it's needed to check if sticker is able to be sent normally
+					// and because it's patched
 					this.stickerSendability = StickersSendability.getStickerSendability;
+					// a boolean for whether to close ExpressionPicker
 					this.canClosePicker = true;
+					// keydown/keyup listeners checking for shift key
 					this.listeners = [
 						(e) => this.canClosePicker = !(e.keyCode === 16),
 						(e) => this.canClosePicker = true
 					]
 				}
 
-				patchSticker() {
+				patchAddPreview() {
+					// Add a zoom/preview popout to stickers
 					Patcher.after(Sticker, 'default', (_, [{ size, sticker }], ret) => {
 						if (size < 40) return;
 						return (this.settings.preview.stickerPreview && sticker.type === StickerType.MetaStickerType.GUILD) ?
@@ -178,16 +188,19 @@ module.exports = (() => {
 							}) : ret;
 					})
 					// Add a zoom/preview popout to Emojis 
-					Patcher.after(ExpressionPickerListItemImage, 'default', (_, args, ret) => {
-						return this.settings.preview.emojiPreview ?
-							React.createElement(previewComponent, {
+					Patcher.after(EmojiPickerListRow, 'default', (_, args, ret) => {
+						ret.props.children = ret.props.children.map(emojiData => {
+							if (!emojiData.props.children.props.emoji) return emojiData;
+							emojiData.props.children = React.createElement(previewComponent, {
 								previewSize: this.settings.preview.previewSize,
-								element: ret,
-								data: args[0]
-							}) : ret;
-
+								element: emojiData.props.children,
+								data: emojiData.props.children.props.emoji
+							})
+							return emojiData;
+						})
 					})
 				}
+
 				patchStickerAttachement() {
 					Patcher.before(MessageUtilities, 'sendMessage', (_, args, ret) => {
 						const [channelId, , , attachments] = args;
@@ -204,6 +217,9 @@ module.exports = (() => {
 				}
 
 				patchStickerPickerLoader() {
+					// Bypass send external stickers permission by adding current user as exception to the channel
+					// Weirdly enough 'Use External Stickers' permission doesn't do anything
+					// 'Use External Emoji' is needed
 					Patcher.before(StickerPickerLoader, 'default', (_, args, ret) => {
 						const temp = {};
 						temp[UserStore.getCurrentUser().id] = {
@@ -219,12 +235,15 @@ module.exports = (() => {
 					})
 				}
 				patchStickerClickability() {
+					// if it's a guild sticker return true to make it clickable 
+					// ignoreing discord's stickers because ToS, and they're not regular images
 					Patcher.after(StickersSendability, 'isSendableSticker', (_, args, returnValue) => {
 						return args[0].type === StickerType.MetaStickerType.GUILD;
 					});
 				}
 
 				patchStickerSuggestion() {
+					// Enable suggestions for custom stickers only 
 					Patcher.after(StickersSendability, 'getStickerSendability', (_, args, returnValue) => {
 						if (args[0].type === StickerType.MetaStickerType.GUILD) {
 							const { SENDABLE } = StickersSendability.StickerSendability;
@@ -247,6 +266,8 @@ module.exports = (() => {
 				}
 
 				patchExpressionsPicker() {
+					// Checking if shift is held to whether close the picker or not 
+					// also clearing the preview
 					Patcher.instead(closeExpressionPicker, 'closeExpressionPicker', (_, args, originalFunc) => {
 						if (this.settings.keepStickersPopoutOpen) {
 							if (this.canClosePicker) {
@@ -278,6 +299,7 @@ module.exports = (() => {
 
 
 				isStickerSendable(stickerId) {
+					// Checking if sticker can be sent normally, Nitro / Guild's sticker
 					const sticker = StickersFunctions.getStickerById(stickerId);
 					const channel = ChannelStore.getChannel(SelectedChannelStore.getChannelId());
 					return [this.stickerSendability(sticker, UserStore.getCurrentUser(), channel), sticker];
@@ -302,7 +324,7 @@ module.exports = (() => {
 					this.patchExpressionsPicker();
 					this.patchStickerPickerLoader();
 					this.patchStickerAttachement();
-					this.patchSticker();
+					this.patchAddPreview();
 				}
 				clean() {
 					PluginUtilities.removeStyle(this.getName());

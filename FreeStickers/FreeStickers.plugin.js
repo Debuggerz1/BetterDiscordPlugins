@@ -116,7 +116,6 @@ module.exports = (() => {
 			const StickerPickerLoader = WebpackModules.find(m => m.default.displayName === 'StickerPickerLoader');
 			const Sticker = WebpackModules.find(m => m.default.displayName === 'Sticker');
 			const Popout = WebpackModules.getByDisplayName("Popout");
-			const ExpressionPickerListItemImage = WebpackModules.find(m => m.default.displayName === 'ExpressionPickerListItemImage');
 			const EmojiPickerListRow = WebpackModules.find(m => m.default.displayName === 'EmojiPickerListRow');
 
 			const css = `

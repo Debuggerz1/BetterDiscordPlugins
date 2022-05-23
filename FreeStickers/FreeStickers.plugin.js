@@ -188,6 +188,7 @@ module.exports = (() => {
 					})
 					// Add a zoom/preview popout to Emojis 
 					Patcher.after(EmojiPickerListRow, 'default', (_, args, ret) => {
+						if (!this.settings.preview.emojiPreview) return;
 						ret.props.children = ret.props.children.map(emojiData => {
 							if (!emojiData.props.children.props.emoji) return emojiData;
 							emojiData.props.children = React.createElement(previewComponent, {

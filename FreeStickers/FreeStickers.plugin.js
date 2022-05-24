@@ -39,7 +39,7 @@ const config = {
 		type: 'switch',
 		id: 'sendDirectly',
 		name: 'Send Directly',
-		note: 'Send the sticker link in a message directly instead of putting it in the chat box.',
+		note: 'Send the sticker link in a message directly instead of putting it in the chat box. Sticker sent as attachement will still be sent directly.',
 		value: true
 	}, {
 		type: 'switch',

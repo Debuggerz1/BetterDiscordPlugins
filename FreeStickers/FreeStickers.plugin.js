@@ -98,6 +98,7 @@ module.exports = (() => {
 		} :
 		(([Plugin, Api]) => {
 			const {
+				Settings,
 				Patcher,
 				WebpackModules,
 				PluginUtilities,
@@ -169,9 +170,6 @@ module.exports = (() => {
 			return class FreeStickers extends Plugin {
 				constructor() {
 					super();
-					// saving this because it's needed to check if sticker is able to be sent normally
-					// and because it's patched
-					this.stickerSendability = StickersSendability.getStickerSendability;
 					// a boolean for whether to close ExpressionPicker
 					this.canClosePicker = true;
 					// keydown/keyup listeners checking for shift key
@@ -217,7 +215,9 @@ module.exports = (() => {
 							const [state, sticker] = this.isStickerSendable(stickerId);
 							if (state !== SENDABLE) {
 								args[3] = {};
-								this.sendStickerAsLink(sticker, channelId);
+								setTimeout(() => {
+									this.sendStickerAsLink(sticker, channelId, true);
+								}, 0)
 							}
 						}
 					})
@@ -286,11 +286,11 @@ module.exports = (() => {
 					});
 				}
 
-				sendStickerAsLink(sticker, channelId) {
+				sendStickerAsLink(sticker, channelId, direct) {
 					if (sticker["format_type"] === StickerType.StickerFormat.APNG && !this.settings.sendAnimatedStickers) return;
 					const url = `https://media.discordapp.net/stickers/${sticker.id}.webp?size=${this.settings.stickerSize}&passthrough=false&quality=lossless`;
 					if (this.checkEmbedPerms(channelId))
-						if (this.settings.sendDirectly)
+						if (this.settings.sendDirectly || direct)
 							MessageUtilities.sendMessage(channelId, {
 								content: url,
 								validNonShortcutEmojis: []
@@ -317,7 +317,7 @@ module.exports = (() => {
 					// Checking if sticker can be sent normally, Nitro / Guild's sticker
 					const sticker = StickersFunctions.getStickerById(stickerId);
 					const channel = ChannelStore.getChannel(SelectedChannelStore.getChannelId());
-					return [this.stickerSendability(sticker, UserStore.getCurrentUser(), channel), sticker];
+					return [StickersSendability.getStickerSendability.__originalFunction(sticker, UserStore.getCurrentUser(), channel), sticker];
 				}
 
 				setupKeyListeners() {
@@ -357,6 +357,12 @@ module.exports = (() => {
 				onStop() {
 					this.clean();
 				}
+
+				saveSettings() {
+					BdApi.saveData(config.info.name, "keybind", this.keybind);
+					BdApi.saveData(config.info.name, "showToast", this.showToast);
+				}
+
 				getSettingsPanel() { return this.buildSettingsPanel().getElement(); }
 			};
 

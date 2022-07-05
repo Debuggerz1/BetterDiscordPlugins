@@ -124,7 +124,7 @@ module.exports = (() => {
 			const Sticker = WebpackModules.find(m => m.default.displayName === 'Sticker');
 			const Popout = WebpackModules.getByDisplayName("Popout");
 			const EmojiPickerListRow = WebpackModules.find(m => m.default.displayName === 'EmojiPickerListRow');
-			const { ComponentDispatch } = BdApi.findModuleByProps("ComponentDispatch");
+			const { ComponentDispatch } = WebpackModules.getByProps("ComponentDispatch");
 
 			const css = `
 				.stickersPreview {
@@ -356,11 +356,6 @@ module.exports = (() => {
 
 				onStop() {
 					this.clean();
-				}
-
-				saveSettings() {
-					BdApi.saveData(config.info.name, "keybind", this.keybind);
-					BdApi.saveData(config.info.name, "showToast", this.showToast);
 				}
 
 				getSettingsPanel() { return this.buildSettingsPanel().getElement(); }
